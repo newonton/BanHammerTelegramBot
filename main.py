@@ -1,5 +1,7 @@
 import os
 from datetime import datetime, timedelta
+from typing import Callable
+
 from telegram import Update, ChatPermissions
 from telegram.ext import Application, CommandHandler, CallbackContext
 from telegram.error import BadRequest
@@ -25,11 +27,7 @@ async def ban(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text('Иди нахуй')
         return
 
-    if not update.message.reply_to_message:
-        await update.message.reply_text(HELP_TEXT)
-        return
-
-    if len(context.args) < 2:
+    if not update.message.reply_to_message or len(context.args) < 2:
         await update.message.reply_text(HELP_TEXT)
         return
 
@@ -39,22 +37,27 @@ async def ban(update: Update, context: CallbackContext) -> None:
     duration_str, *reason = context.args
     reason = ' '.join(reason)
 
-    if duration_str[-1] == 'm':
+    time_str: dict[str, list[str]] = {
+        'm': ['минуту', 'минуты', 'минут'],
+        'h': ['час', 'часа', 'часов'],
+        'd': ['день', 'дня', 'дней'],
+        'w': ['неделю', 'недели', 'недель'],
+    }
+
+    timedelta_func: dict[str, Callable[[int], timedelta]] = {
+        'm': lambda d: timedelta(minutes=d),
+        'h': lambda d: timedelta(hours=d),
+        'd': lambda d: timedelta(days=d),
+        'w': lambda d: timedelta(weeks=d),
+    }
+
+    time_key = duration_str[-1]
+    if time_str[time_key] is not None:
         duration = int(duration_str[:-1])
-        unit = 'минуту' if duration == 1 else 'минуты' if 1 < duration < 5 else 'минут'
-        end_time = datetime.now() + timedelta(minutes=duration)
-    elif duration_str[-1] == 'h':
-        duration = int(duration_str[:-1])
-        unit = 'час' if duration == 1 else 'часа' if 1 < duration < 5 else 'часов'
-        end_time = datetime.now() + timedelta(hours=duration)
-    elif duration_str[-1] == 'd':
-        duration = int(duration_str[:-1])
-        unit = 'день' if duration == 1 else 'дня' if 1 < duration < 5 else 'дней'
-        end_time = datetime.now() + timedelta(days=duration)
-    elif duration_str[-1] == 'w':
-        duration = int(duration_str[:-1])
-        unit = 'неделю' if duration == 1 else 'недели' if 1 < duration < 5 else 'недель'
-        end_time = datetime.now() + timedelta(weeks=duration)
+        unit = time_str[time_key][0] if duration == 1 \
+            else time_str[time_key][1] if 1 < duration < 5 \
+            else time_str[time_key][2]
+        end_time = datetime.now() + timedelta_func[time_key](duration)
     elif duration_str == "always":
         duration = None
         unit = ''
@@ -82,7 +85,8 @@ async def ban(update: Update, context: CallbackContext) -> None:
 
         mention_html = user.mention_html()
         duration_text = f'на {duration} {unit}' if duration is not None else 'навсегда'
-        await update.message.reply_to_message.reply_text(f'Пользователь {mention_html} забанен {duration_text} по причине {reason}', parse_mode='HTML')
+        await update.message.reply_to_message.reply_text(
+            f'Пользователь {mention_html} забанен {duration_text} по причине {reason}', parse_mode='HTML')
         return
 
     except BadRequest as e:
