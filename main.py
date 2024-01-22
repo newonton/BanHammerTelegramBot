@@ -57,7 +57,7 @@ async def ban(update: Update, context: CallbackContext) -> None:
         unit = time_str[time_key][0] if duration == 1 \
             else time_str[time_key][1] if 1 < duration < 5 \
             else time_str[time_key][2]
-        end_time = datetime.now() + timedelta_func[time_key](duration)
+        end_time = datetime.utcnow() + timedelta_func[time_key](duration)
     elif duration_str == "always":
         duration = None
         unit = ''
@@ -87,6 +87,7 @@ async def ban(update: Update, context: CallbackContext) -> None:
         duration_text = f'на {duration} {unit}' if duration is not None else 'навсегда'
         await update.message.reply_to_message.reply_text(
             f'Пользователь {mention_html} забанен {duration_text} по причине {reason}', parse_mode='HTML')
+        await context.bot.delete_message(update.message.chat_id, update.message.message_id)
         return
 
     except BadRequest as e:
