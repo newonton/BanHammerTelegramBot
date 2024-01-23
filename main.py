@@ -11,7 +11,8 @@ load_dotenv()
 
 TOKEN = os.getenv('BANHAMMER_TOKEN')
 ALLOWED_USER_IDS = [int(user_id) for user_id in os.getenv('BANHAMMER_ALLOWED_USER_IDS', '').split(',')]
-HELP_TEXT = '''/ban [time] [message]\ntime {1m; 2h; 3d; 4w; always}\nmessage {спам и оскорбления; политика; иди нахуй}'''
+HELP_TEXT_BAN = '''/ban [time] [message]\ntime {1m; 2h; 3d; 4w; always}\nmessage {спам и оскорбления; политика; иди нахуй}'''
+HELP_TEXT_OFFVOICE = '''/off_voice [time]\ntime {1m; 2h; 3d; 4w; always}'''
 
 
 async def get_id(update: Update, context: CallbackContext) -> None:
@@ -19,7 +20,7 @@ async def get_id(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text('Иди нахуй')
         return
 
-    await update.message.reply_text(f'{update.message.from_user.id}')
+    await update.message.reply_text(f'{update.message.from_user.id} {update.message.reply_to_message.from_user.id}')
 
 
 async def ban(update: Update, context: CallbackContext) -> None:
@@ -28,7 +29,7 @@ async def ban(update: Update, context: CallbackContext) -> None:
         return
 
     if not update.message.reply_to_message or len(context.args) < 2:
-        await update.message.reply_text(HELP_TEXT)
+        await update.message.reply_text(HELP_TEXT_BAN)
         return
 
     user = update.message.reply_to_message.from_user
@@ -63,7 +64,7 @@ async def ban(update: Update, context: CallbackContext) -> None:
         unit = ''
         end_time = None
     else:
-        await update.message.reply_text(HELP_TEXT)
+        await update.message.reply_text(HELP_TEXT_BAN)
         return
 
     try:
@@ -102,11 +103,81 @@ async def ban(update: Update, context: CallbackContext) -> None:
         return
 
 
+async def off_voice(update: Update, context: CallbackContext) -> None:
+    if update.message.from_user.id not in ALLOWED_USER_IDS:
+        await update.message.reply_text('Иди нахуй')
+        return
+
+    if not update.message.reply_to_message or len(context.args) != 1:
+        await update.message.reply_text(HELP_TEXT_OFFVOICE)
+        return
+
+    user = update.message.reply_to_message.from_user
+    user_id = user.id
+
+    duration_str = context.args
+
+    time_str: dict[str, list[str]] = {
+        'm': ['минуту', 'минуты', 'минут'],
+        'h': ['час', 'часа', 'часов'],
+        'd': ['день', 'дня', 'дней'],
+        'w': ['неделю', 'недели', 'недель'],
+    }
+
+    timedelta_func: dict[str, Callable[[int], timedelta]] = {
+        'm': lambda d: timedelta(minutes=d),
+        'h': lambda d: timedelta(hours=d),
+        'd': lambda d: timedelta(days=d),
+        'w': lambda d: timedelta(weeks=d),
+    }
+
+    time_key = duration_str[-1]
+    if time_str[time_key] is not None:
+        duration = int(duration_str[:-1])
+        unit = time_str[time_key][0] if duration == 1 \
+            else time_str[time_key][1] if 1 < duration < 5 \
+            else time_str[time_key][2]
+        end_time = datetime.utcnow() + timedelta_func[time_key](duration)
+    elif duration_str == "always":
+        duration = None
+        unit = ''
+        end_time = None
+    else:
+        await update.message.reply_text(HELP_TEXT_BAN)
+        return
+
+    try:
+        await context.bot.restrict_chat_member(update.message.chat_id, user_id,
+                                               permissions=ChatPermissions(
+                                                   can_send_voice_notes=False,
+                                               ),
+                                               until_date=end_time)
+
+        mention_html = user.mention_html()
+        duration_text = f'на {duration} {unit}' if duration is not None else 'навсегда'
+        await update.message.reply_to_message.reply_text(
+            f'Пользователю {mention_html} запрещены голосовые сообщения {duration_text}.\nПиши текстом, сука!', parse_mode='HTML')
+        await context.bot.delete_message(update.message.chat_id, update.message.message_id)
+        return
+
+    except BadRequest as e:
+        if e.message == "Not enough rights to restrict/unrestrict chat member":
+            await update.message.reply_text("У бота недостаточно прав")
+            return
+        else:
+            await update.message.reply_text(f"Неизвестная ошибка: {e}")
+            return
+    except Exception as e:
+        await update.message.reply_text(f"Неизвестная ошибка: {e}")
+        return
+
+
 def main():
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("id", get_id))
     application.add_handler(CommandHandler("ban", ban))
+    application.add_handler(CommandHandler("off_voice", off_voice))
 
     application.run_polling()
 
