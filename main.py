@@ -87,7 +87,7 @@ async def ban(update: Update, context: CallbackContext) -> None:
         mention_html = user.mention_html()
         duration_text = f'на {duration} {unit}' if duration is not None else 'навсегда'
         await update.message.reply_to_message.reply_text(
-            f'Пользователь {mention_html} забанен {duration_text} по причине {reason}', parse_mode='HTML')
+            f'Пользователь {mention_html} забанен {duration_text} по причине: {reason}', parse_mode='HTML')
         await context.bot.delete_message(update.message.chat_id, update.message.message_id)
         return
 
